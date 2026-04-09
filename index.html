@@ -429,17 +429,16 @@ function renderMenu(){
           <span style="margin-left:auto;font-size:12px;opacity:.6;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:2px 8px">Tùy chỉnh</span>
         </button>
         ${saved.map((s,i)=>`
-        <button class="btn btn-cyan btn-full" onclick="openSavedConfig(${i})" style="justify-content:flex-start;gap:14px">
-          <span style="font-size:24px">📚</span>
-          <div style="text-align:left">
-            <div style="font-weight:700">${esc(s.name||'Bộ đề '+(i+1))}</div>
-            <div style="font-size:12px;opacity:.72;font-weight:400">${s.questions.length} câu · ${s.timePerQ}s/câu</div>
-          </div>
-          <div style="margin-left:auto;display:flex;gap:6px" onclick="event.stopPropagation()">
-            <button onclick="editSaved(${i})" style="background:rgba(124,58,237,.22);border:1px solid rgba(124,58,237,.4);color:#c4b5fd;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:4px" title="Chỉnh sửa">⚙️</button>
-            <button onclick="deleteSaved(${i})" style="background:rgba(239,68,68,.18);border:1px solid rgba(239,68,68,.35);color:#fca5a5;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--font)">Xóa</button>
-          </div>
-        </button>`).join('')}
+        <div style="display:flex;gap:8px;align-items:stretch">
+          <button class="btn btn-cyan" onclick="openSavedConfig(${i})" style="flex:1;justify-content:flex-start;gap:14px;min-width:0">
+            <span style="font-size:24px;flex-shrink:0">📚</span>
+            <div style="text-align:left;min-width:0;overflow:hidden">
+              <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name||'Bộ đề '+(i+1))}</div>
+              <div style="font-size:12px;opacity:.72;font-weight:400">${s.questions.length} câu · ${s.timePerQ}s/câu</div>
+            </div>
+          </button>
+          <button onclick="openSavedSettings(${i},event)" style="flex-shrink:0;background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.35);color:#c4b5fd;padding:6px 12px;border-radius:var(--r2);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);display:flex;align-items:center;gap:5px;white-space:nowrap;transition:var(--trans)" onmouseover="this.style.background='rgba(124,58,237,.32)'" onmouseout="this.style.background='rgba(124,58,237,.18)'">⚙️ Cài đặt</button>
+        </div>`).join('')}
         <button class="btn btn-ghost btn-full" onclick="goCreate()" style="justify-content:flex-start;gap:14px">
           <span style="font-size:24px">✏️</span>
           <div style="text-align:left">
@@ -486,6 +485,64 @@ function renderMenu(){
 window.openDefaultConfig=()=>{SFX.click();showConfigModal(DEFAULT_QS,'Bộ câu hỏi có sẵn');};
 window.openSavedConfig=(i)=>{SFX.click();const s=LS.get('question_sets',[])[i];if(s)showConfigModal(s.questions,s.name);};
 window.deleteSaved=(i)=>{if(!confirm('Xóa bộ đề này?'))return;const s=LS.get('question_sets',[]);s.splice(i,1);LS.set('question_sets',s);render();};
+/* ── SAVED SET SETTINGS DROPDOWN ── */
+window.openSavedSettings=(i,ev)=>{
+  ev.stopPropagation();
+  SFX.click();
+  // Remove any existing dropdown
+  const old=document.getElementById('saved-dropdown');
+  if(old){old.remove();return;}
+  const btn=ev.currentTarget;
+  const rect=btn.getBoundingClientRect();
+  const dd=document.createElement('div');
+  dd.id='saved-dropdown';
+  dd.style.cssText=`
+    position:fixed;
+    top:${rect.bottom+6}px;
+    left:${Math.min(rect.left, window.innerWidth-220)}px;
+    width:210px;
+    background:var(--card);
+    border:1px solid var(--border2);
+    border-radius:var(--r2);
+    box-shadow:0 8px 32px rgba(0,0,0,.45);
+    z-index:999;
+    overflow:hidden;
+    animation:popIn .2s cubic-bezier(.34,1.56,.64,1);
+    font-family:var(--font);
+  `;
+  const sets=LS.get('question_sets',[]);
+  const s=sets[i];
+  if(!s){dd.remove();return;}
+  dd.innerHTML=`
+    <div style="padding:8px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border)">
+      ${esc(s.name||'Bộ đề '+(i+1))}
+    </div>
+    <button onclick="closeSavedDropdown();openSavedConfig(${i})" style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 14px;background:transparent;border:none;color:var(--text);font-family:var(--font);font-size:14px;cursor:pointer;text-align:left;transition:background .15s" onmouseover="this.style.background='rgba(124,58,237,.1)'" onmouseout="this.style.background='transparent'">
+      <span>▶️</span><span style="font-weight:600">Bắt đầu chơi</span>
+    </button>
+    <button onclick="closeSavedDropdown();editSaved(${i})" style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 14px;background:transparent;border:none;color:var(--text);font-family:var(--font);font-size:14px;cursor:pointer;text-align:left;transition:background .15s" onmouseover="this.style.background='rgba(124,58,237,.1)'" onmouseout="this.style.background='transparent'">
+      <span>✏️</span><span style="font-weight:600">Chỉnh sửa bộ đề</span>
+    </button>
+    <div style="height:1px;background:var(--border);margin:4px 0"></div>
+    <button onclick="closeSavedDropdown();deleteSaved(${i})" style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 14px;background:transparent;border:none;color:#fca5a5;font-family:var(--font);font-size:14px;cursor:pointer;text-align:left;transition:background .15s" onmouseover="this.style.background='rgba(239,68,68,.1)'" onmouseout="this.style.background='transparent'">
+      <span>🗑️</span><span style="font-weight:600">Xóa bộ đề này</span>
+    </button>
+  `;
+  document.body.appendChild(dd);
+  // Close on outside click
+  setTimeout(()=>{
+    document.addEventListener('click', closeSavedDropdownHandler);
+  }, 10);
+};
+function closeSavedDropdownHandler(e){
+  const dd=document.getElementById('saved-dropdown');
+  if(dd&&!dd.contains(e.target)){dd.remove();document.removeEventListener('click',closeSavedDropdownHandler);}
+}
+window.closeSavedDropdown=()=>{
+  const dd=document.getElementById('saved-dropdown');
+  if(dd){dd.remove();document.removeEventListener('click',closeSavedDropdownHandler);}
+};
+
 window.editSaved=(i)=>{
   SFX.click();
   const sets=LS.get('question_sets',[]);
@@ -510,24 +567,55 @@ window.confirmResetStreak=()=>{
 /* ── File Upload (JSON / TXT / PDF note / DOC hint) ── */
 window.uploadFile=(e)=>{
   const f=e.target.files[0];if(!f)return;
+  e.target.value=''; // Reset immediately to allow re-upload same file
   const ext=f.name.split('.').pop().toLowerCase();
+
+  // File size guard (max 5MB for JSON/TXT)
+  if((ext==='json'||ext==='txt')&&f.size>5*1024*1024){
+    alert('❌ File quá lớn! Vui lòng chọn file JSON/TXT nhỏ hơn 5MB.');
+    return;
+  }
+
   if(ext==='json'||ext==='txt'){
     const r=new FileReader();
     r.onload=ev=>{
       try{
         if(ext==='json'){
-          let data=JSON.parse(ev.target.result);
+          let data;
+          try{data=JSON.parse(ev.target.result);}catch(pe){alert('❌ File JSON không hợp lệ!\nLỗi: '+pe.message);return;}
           const qs=Array.isArray(data)?data:(data.questions||[]);
           if(!qs.length){alert('Không tìm thấy câu hỏi trong file!');return;}
           // Strip .json extension and use filename as set name
           const setName=f.name.replace(/\.json$/i,'').replace(/_/g,' ');
-          // Save to question_sets with this name
-          const sets=LS.get('question_sets',[]);
+          let sets=LS.get('question_sets',[]);
           // Check if already exists with same name, replace it
           const existIdx=sets.findIndex(s=>s.name===setName);
           const ns={name:setName,questions:qs.map((q,i)=>({...q,id:q.id||i+1})),timePerQ:data.timePerQ||20,hints:data.hints||3};
+
+          // Strip base64 images if storage quota is a concern — keep only first 50 images
+          // Try saving, fall back to stripping images
           if(existIdx>=0){sets[existIdx]=ns;}else{sets.push(ns);}
-          LS.set('question_sets',sets);
+          try{
+            LS.set('question_sets',sets);
+          }catch(qe){
+            // Storage full — try stripping images from new set
+            const stripped={...ns,questions:ns.questions.map(q=>({...q,image:'',optImages:(q.optImages||[]).map(()=>'')}))};
+            if(existIdx>=0){sets[existIdx]=stripped;}else{sets[sets.length-1]=stripped;}
+            try{
+              LS.set('question_sets',sets);
+              alert(`⚠️ Đã thêm bộ đề "${setName}" (${qs.length} câu)\nnhưng ảnh bị xóa do bộ nhớ đầy.`);
+              render();return;
+            }catch(e2){
+              // Still full — remove oldest sets until it fits
+              while(sets.length>1){
+                sets.shift();
+                if(existIdx>=0&&existIdx<sets.length){sets[existIdx]=stripped;}else if(sets.length>0){sets[sets.length-1]=stripped;}
+                try{LS.set('question_sets',sets);alert(`⚠️ Bộ nhớ đầy! Đã xóa bộ đề cũ nhất để nhường chỗ.\nĐã thêm "${setName}" (${qs.length} câu).`);render();return;}catch(e3){}
+              }
+              alert('❌ Không thể lưu! Bộ nhớ trình duyệt đã đầy.\nVui lòng xóa bớt bộ đề cũ trước.');
+              return;
+            }
+          }
           SFX.correct();
           alert(`✔️ Đã thêm bộ đề "${setName}" (${qs.length} câu)\nvào menu chơi!`);
           render();
@@ -536,22 +624,35 @@ window.uploadFile=(e)=>{
           const qs=parseTXT(lines);
           if(!qs.length){alert('Không đọc được câu hỏi từ file TXT!\nĐịnh dạng: mỗi câu gồm dòng câu hỏi, 4 dòng A)... B)... C)... D)..., và dòng "Đáp án: A"');return;}
           const setName=f.name.replace(/\.[^.]+$/,'').replace(/_/g,' ');
-          const sets=LS.get('question_sets',[]);
-          sets.push({name:setName,questions:qs,timePerQ:20,hints:3});
-          LS.set('question_sets',sets);
+          let sets=LS.get('question_sets',[]);
+          const existIdx=sets.findIndex(s=>s.name===setName);
+          const ns={name:setName,questions:qs,timePerQ:20,hints:3};
+          if(existIdx>=0){sets[existIdx]=ns;}else{sets.push(ns);}
+          try{
+            LS.set('question_sets',sets);
+          }catch(qe){
+            // Try removing oldest to free space
+            while(sets.length>1){
+              sets.shift();
+              if(existIdx>=0&&existIdx<sets.length){sets[existIdx]=ns;}else if(sets.length>0){sets[sets.length-1]=ns;}
+              try{LS.set('question_sets',sets);alert('⚠️ Bộ nhớ đầy — đã xóa bộ đề cũ nhất.\nĐã thêm "'+setName+'" ('+qs.length+' câu).');render();return;}catch(e2){}
+            }
+            alert('❌ Không thể lưu! Bộ nhớ trình duyệt đã đầy.\nVui lòng xóa bớt bộ đề cũ trước.');
+            return;
+          }
           SFX.correct();
           alert(`✔️ Đã thêm bộ đề "${setName}" (${qs.length} câu)\nvào menu chơi!`);
           render();
         }
       }catch(err){alert('Lỗi đọc file: '+err.message);}
     };
+    r.onerror=()=>alert('❌ Không thể đọc file. Vui lòng thử lại.');
     r.readAsText(f,'UTF-8');
   } else if(ext==='pdf'){
     alert('📄 File PDF đã nhận!\n\nDo giới hạn trình duyệt, bạn cần copy nội dung câu hỏi từ PDF vào file JSON hoặc TXT theo định dạng mẫu.\n\nĐịnh dạng JSON mẫu:\n[{"type":"mcq","question":"...","options":["A","B","C","D"],"answer":0}]');
   } else if(ext==='doc'||ext==='docx'){
     alert('📝 File DOC/DOCX đã nhận!\n\nDo giới hạn trình duyệt thuần (không có server), bạn cần xuất file Word thành JSON hoặc TXT theo định dạng:\n\n1. Câu hỏi?\nA) Đáp án A\nB) Đáp án B\nC) Đáp án C\nD) Đáp án D\nĐáp án: A');
   }
-  e.target.value='';
 };
 
 function parseTXT(lines){
