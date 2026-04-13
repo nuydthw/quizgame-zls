@@ -222,10 +222,97 @@ const SFX={
   end:()=>[523,587,659,698,784].forEach((f,i)=>setTimeout(()=>tone(f,'sine',.14),i*95)),
 };
 
-/* ── localStorage ── */
-const LS={
-  get:(k,d)=>{try{const v=localStorage.getItem(k);return v!=null?JSON.parse(v):d}catch{return d}},
-  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}},
+/* ── STORAGE ENGINE ──
+   In-memory store is the single source of truth.
+   localStorage is best-effort persistence, split per-set to avoid quota.
+   ─────────────────────────────────────────────────────────── */
+
+/* Question Sets in-memory master list */
+const _QS_MEM = { list: null };
+
+const QS = {
+  _load() {
+    if (_QS_MEM.list !== null) return;
+    /* Try new per-key format */
+    try {
+      const idxRaw = localStorage.getItem('qs_index');
+      if (idxRaw) {
+        const idx = JSON.parse(idxRaw);
+        const list = [];
+        for (const meta of idx) {
+          try {
+            const raw = localStorage.getItem(meta.key);
+            if (raw) list.push({ name: meta.name, timePerQ: meta.timePerQ || 20, hints: meta.hints || 3, questions: JSON.parse(raw) });
+          } catch (_) {}
+        }
+        _QS_MEM.list = list;
+        return;
+      }
+    } catch (_) {}
+    /* Fallback legacy */
+    try {
+      const raw = localStorage.getItem('question_sets');
+      _QS_MEM.list = raw ? JSON.parse(raw) : [];
+    } catch { _QS_MEM.list = []; }
+  },
+
+  getAll() { this._load(); return _QS_MEM.list; },
+
+  _persist() {
+    const list = _QS_MEM.list;
+    /* Remove old per-key entries */
+    try {
+      const oldIdx = JSON.parse(localStorage.getItem('qs_index') || '[]');
+      for (const m of oldIdx) { try { localStorage.removeItem(m.key); } catch (_) {} }
+    } catch (_) {}
+    const idx = [];
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      const key = 'qs_' + i;
+      const meta = { name: s.name, timePerQ: s.timePerQ, hints: s.hints, key };
+      try {
+        localStorage.setItem(key, JSON.stringify(s.questions));
+        idx.push(meta);
+      } catch (_) { /* questions too large — won't persist but MEM is fine */ }
+    }
+    try { localStorage.setItem('qs_index', JSON.stringify(idx)); } catch (_) {}
+    try { localStorage.removeItem('question_sets'); } catch (_) {}
+  },
+
+  upsert(ns) {
+    this._load();
+    const ei = _QS_MEM.list.findIndex(s => s.name === ns.name);
+    if (ei >= 0) _QS_MEM.list[ei] = ns; else _QS_MEM.list.push(ns);
+    this._persist();
+  },
+
+  remove(i) {
+    this._load();
+    _QS_MEM.list.splice(i, 1);
+    this._persist();
+  },
+
+  update(i, ns) {
+    this._load();
+    _QS_MEM.list[i] = ns;
+    this._persist();
+  },
+};
+
+/* ── localStorage wrapper (non-question-set keys) ── */
+const _LS_MEM = {};
+const LS = {
+  get(k, d) {
+    if (k === 'question_sets') return QS.getAll();
+    if (k in _LS_MEM) return _LS_MEM[k];
+    try { const v = localStorage.getItem(k); const p = v != null ? JSON.parse(v) : d; _LS_MEM[k] = p; return p; }
+    catch { return d; }
+  },
+  set(k, v) {
+    if (k === 'question_sets') { QS._load(); _QS_MEM.list = v; QS._persist(); return; }
+    _LS_MEM[k] = v;
+    try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {}
+  },
 };
 
 /* ── APP STATE ── */
@@ -406,7 +493,7 @@ window.startFromModal=()=>{
    MENU SCREEN
 ══════════════════════════════════════════════════ */
 function renderMenu(){
-  const saved=LS.get('question_sets',[]);
+  const saved=QS.getAll();
   const best=S.bestStreak;
   $app.innerHTML=`
   <div class="screen" style="max-width:520px">
@@ -483,8 +570,8 @@ function renderMenu(){
 }
 
 window.openDefaultConfig=()=>{SFX.click();showConfigModal(DEFAULT_QS,'Bộ câu hỏi có sẵn');};
-window.openSavedConfig=(i)=>{SFX.click();const s=LS.get('question_sets',[])[i];if(s)showConfigModal(s.questions,s.name);};
-window.deleteSaved=(i)=>{if(!confirm('Xóa bộ đề này?'))return;const s=LS.get('question_sets',[]);s.splice(i,1);LS.set('question_sets',s);render();};
+window.openSavedConfig=(i)=>{SFX.click();const s=QS.getAll()[i];if(s)showConfigModal(s.questions,s.name);};
+window.deleteSaved=(i)=>{if(!confirm('Xóa bộ đề này?'))return;QS.remove(i);render();};
 /* ── SAVED SET SETTINGS DROPDOWN ── */
 window.openSavedSettings=(i,ev)=>{
   ev.stopPropagation();
@@ -510,7 +597,7 @@ window.openSavedSettings=(i,ev)=>{
     animation:popIn .2s cubic-bezier(.34,1.56,.64,1);
     font-family:var(--font);
   `;
-  const sets=LS.get('question_sets',[]);
+  const sets=QS.getAll();
   const s=sets[i];
   if(!s){dd.remove();return;}
   dd.innerHTML=`
@@ -545,7 +632,7 @@ window.closeSavedDropdown=()=>{
 
 window.editSaved=(i)=>{
   SFX.click();
-  const sets=LS.get('question_sets',[]);
+  const sets=QS.getAll();
   const s=sets[i];if(!s)return;
   // Load into CR for editing, store the index so we can overwrite on save
   CR={
@@ -567,15 +654,8 @@ window.confirmResetStreak=()=>{
 /* ── File Upload (JSON / TXT / PDF note / DOC hint) ── */
 window.uploadFile=(e)=>{
   const f=e.target.files[0];if(!f)return;
-  e.target.value=''; // Reset immediately to allow re-upload same file
+  e.target.value='';
   const ext=f.name.split('.').pop().toLowerCase();
-
-  // File size guard (max 5MB for JSON/TXT)
-  if((ext==='json'||ext==='txt')&&f.size>5*1024*1024){
-    alert('❌ File quá lớn! Vui lòng chọn file JSON/TXT nhỏ hơn 5MB.');
-    return;
-  }
-
   if(ext==='json'||ext==='txt'){
     const r=new FileReader();
     r.onload=ev=>{
@@ -585,63 +665,20 @@ window.uploadFile=(e)=>{
           try{data=JSON.parse(ev.target.result);}catch(pe){alert('❌ File JSON không hợp lệ!\nLỗi: '+pe.message);return;}
           const qs=Array.isArray(data)?data:(data.questions||[]);
           if(!qs.length){alert('Không tìm thấy câu hỏi trong file!');return;}
-          // Strip .json extension and use filename as set name
           const setName=f.name.replace(/\.json$/i,'').replace(/_/g,' ');
-          let sets=LS.get('question_sets',[]);
-          // Check if already exists with same name, replace it
-          const existIdx=sets.findIndex(s=>s.name===setName);
-          const ns={name:setName,questions:qs.map((q,i)=>({...q,id:q.id||i+1})),timePerQ:data.timePerQ||20,hints:data.hints||3};
-
-          // Strip base64 images if storage quota is a concern — keep only first 50 images
-          // Try saving, fall back to stripping images
-          if(existIdx>=0){sets[existIdx]=ns;}else{sets.push(ns);}
-          try{
-            LS.set('question_sets',sets);
-          }catch(qe){
-            // Storage full — try stripping images from new set
-            const stripped={...ns,questions:ns.questions.map(q=>({...q,image:'',optImages:(q.optImages||[]).map(()=>'')}))};
-            if(existIdx>=0){sets[existIdx]=stripped;}else{sets[sets.length-1]=stripped;}
-            try{
-              LS.set('question_sets',sets);
-              alert(`⚠️ Đã thêm bộ đề "${setName}" (${qs.length} câu)\nnhưng ảnh bị xóa do bộ nhớ đầy.`);
-              render();return;
-            }catch(e2){
-              // Still full — remove oldest sets until it fits
-              while(sets.length>1){
-                sets.shift();
-                if(existIdx>=0&&existIdx<sets.length){sets[existIdx]=stripped;}else if(sets.length>0){sets[sets.length-1]=stripped;}
-                try{LS.set('question_sets',sets);alert(`⚠️ Bộ nhớ đầy! Đã xóa bộ đề cũ nhất để nhường chỗ.\nĐã thêm "${setName}" (${qs.length} câu).`);render();return;}catch(e3){}
-              }
-              alert('❌ Không thể lưu! Bộ nhớ trình duyệt đã đầy.\nVui lòng xóa bớt bộ đề cũ trước.');
-              return;
-            }
-          }
+          const ns={name:setName,questions:qs.map((q,qi)=>({...q,id:q.id||qi+1})),timePerQ:data.timePerQ||20,hints:data.hints||3};
+          QS.upsert(ns);
           SFX.correct();
-          alert(`✔️ Đã thêm bộ đề "${setName}" (${qs.length} câu)\nvào menu chơi!`);
+          alert('✔️ Đã thêm bộ đề "'+setName+'" ('+qs.length+' câu)\nvào menu chơi!');
           render();
         } else {
           const lines=ev.target.result.split('\n').filter(l=>l.trim());
           const qs=parseTXT(lines);
           if(!qs.length){alert('Không đọc được câu hỏi từ file TXT!\nĐịnh dạng: mỗi câu gồm dòng câu hỏi, 4 dòng A)... B)... C)... D)..., và dòng "Đáp án: A"');return;}
           const setName=f.name.replace(/\.[^.]+$/,'').replace(/_/g,' ');
-          let sets=LS.get('question_sets',[]);
-          const existIdx=sets.findIndex(s=>s.name===setName);
-          const ns={name:setName,questions:qs,timePerQ:20,hints:3};
-          if(existIdx>=0){sets[existIdx]=ns;}else{sets.push(ns);}
-          try{
-            LS.set('question_sets',sets);
-          }catch(qe){
-            // Try removing oldest to free space
-            while(sets.length>1){
-              sets.shift();
-              if(existIdx>=0&&existIdx<sets.length){sets[existIdx]=ns;}else if(sets.length>0){sets[sets.length-1]=ns;}
-              try{LS.set('question_sets',sets);alert('⚠️ Bộ nhớ đầy — đã xóa bộ đề cũ nhất.\nĐã thêm "'+setName+'" ('+qs.length+' câu).');render();return;}catch(e2){}
-            }
-            alert('❌ Không thể lưu! Bộ nhớ trình duyệt đã đầy.\nVui lòng xóa bớt bộ đề cũ trước.');
-            return;
-          }
+          QS.upsert({name:setName,questions:qs,timePerQ:20,hints:3});
           SFX.correct();
-          alert(`✔️ Đã thêm bộ đề "${setName}" (${qs.length} câu)\nvào menu chơi!`);
+          alert('✔️ Đã thêm bộ đề "'+setName+'" ('+qs.length+' câu)\nvào menu chơi!');
           render();
         }
       }catch(err){alert('Lỗi đọc file: '+err.message);}
@@ -888,12 +925,10 @@ window.crExportJSON=()=>{
 window.crSave=()=>{
   const valid=CR.questions.filter(q=>q.question.trim());
   if(!valid.length){alert('Nhập ít nhất 1 câu hỏi!');return;}
-  const sets=LS.get('question_sets',[]);
   const ns={name:CR.name||'Bộ đề',questions:valid.map((q,i)=>({...q,id:i+1})),timePerQ:CR.timePerQ||20,hints:CR.hints||3};
   if(CR.editIndex!=null){
     // Editing existing — overwrite
-    sets[CR.editIndex]=ns;
-    LS.set('question_sets',sets);
+    QS.update(CR.editIndex, ns);
     SFX.correct();
     // Auto export JSON
     _doExportJSON(ns);
@@ -901,8 +936,7 @@ window.crSave=()=>{
     startGame(ns.questions,{timePerQ:ns.timePerQ,hints:ns.hints,name:ns.name});
   } else {
     // New set — push, export JSON, reset CR, go to game
-    sets.push(ns);
-    LS.set('question_sets',sets);
+    QS.upsert(ns);
     SFX.correct();
     // Auto export JSON
     _doExportJSON(ns);
