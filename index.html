@@ -209,16 +209,38 @@ label.lbl{font-size:13px;color:var(--muted);display:block;margin-bottom:5px;font
 .lightbox-zoom-bar button:hover{background:rgba(255,255,255,.1)}
 .lightbox-zoom-lbl{font-size:13px;font-weight:700;color:var(--muted);min-width:38px;text-align:center}
 
-/* ── RICH TEXT (bold/italic/newline in questions) ── */
+/* ── RICH TEXT display (bold/italic/newline in questions) ── */
 .rich-text strong{font-weight:800;color:var(--text)}
 .rich-text em{font-style:italic;color:#c4b5fd}
 .rich-text br{display:block;content:'';margin-top:4px}
 
+/* ── RICH TEXT EDITOR (create screen) ── */
+.rte-wrap{position:relative;margin-bottom:9px}
+.rte-toolbar{display:flex;gap:4px;margin-bottom:5px;flex-wrap:wrap;align-items:center}
+.rte-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;border-radius:6px;border:1.5px solid var(--border2);background:transparent;color:var(--text);font-family:var(--font);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;padding:0}
+.rte-btn:hover{background:rgba(124,58,237,.15);border-color:var(--violet);color:#a78bfa}
+.rte-btn.active{background:rgba(124,58,237,.25);border-color:var(--violet);color:#a78bfa}
+.rte-btn-b{font-weight:900}
+.rte-btn-i{font-style:italic;font-weight:600}
+.rte-hint{font-size:11px;color:var(--muted);padding:2px 7px;border-left:2px solid var(--border2)}
+.rte-field{width:100%;min-height:44px;padding:10px 14px;border-radius:var(--r3);border:1.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border-color .2s;line-height:1.7;cursor:text;white-space:pre-wrap;word-break:break-word}
+.light .rte-field{background:rgba(255,255,255,.85)}
+.rte-field:focus{border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.1)}
+.rte-field[placeholder]:empty::before{content:attr(placeholder);color:var(--muted);pointer-events:none}
+.rte-field strong{font-weight:800;color:var(--text)}
+.rte-field em{font-style:italic;color:#c4b5fd}
+.rte-preview{margin-top:5px;padding:7px 11px;border-radius:6px;background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);font-size:13px;color:var(--muted);display:none}
+.rte-preview.has-fmt{display:block}
+.rte-preview-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--violet);margin-bottom:3px}
+
 /* ── CURSOR EFFECTS ── */
-#cursor-glow{pointer-events:none;position:fixed;z-index:9999;width:22px;height:22px;border-radius:50%;background:radial-gradient(circle,rgba(124,58,237,.55) 0%,rgba(6,182,212,.2) 55%,transparent 75%);transform:translate(-50%,-50%);transition:transform .08s ease,width .2s ease,height .2s ease,opacity .2s;mix-blend-mode:screen;will-change:transform}
-#cursor-trail-wrap{pointer-events:none;position:fixed;z-index:9998;top:0;left:0;width:100%;height:100%;overflow:hidden}
-.cursor-spark{pointer-events:none;position:fixed;border-radius:50%;transform:translate(-50%,-50%);animation:sparkFly var(--dur,0.7s) ease forwards;z-index:9997}
-@keyframes sparkFly{0%{opacity:.9;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(calc(-50% + var(--dx,0px)),calc(-50% + var(--dy,0px))) scale(0)}}
+#cursor-dot{pointer-events:none;position:fixed;z-index:9999;width:7px;height:7px;border-radius:50%;background:#fff;transform:translate(-50%,-50%);will-change:left,top;mix-blend-mode:difference;transition:width .15s,height .15s,opacity .2s}
+.cur-spark{pointer-events:none;position:fixed;transform:translate(-50%,-50%);animation:sparkFly3 var(--dur,.65s) cubic-bezier(.12,.85,.35,1) forwards;z-index:9997}
+@keyframes sparkFly3{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}65%{opacity:.45}100%{opacity:0;transform:translate(calc(-50% + var(--dx,0px)),calc(-50% + var(--dy,0px))) scale(0)}}
+.cur-glow{pointer-events:none;position:fixed;border-radius:50%;transform:translate(-50%,-50%);animation:glowFade var(--gd,.5s) ease-out forwards;z-index:9993;filter:blur(4px)}
+@keyframes glowFade{0%{opacity:.6;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.8)}}
+.cur-ripple{pointer-events:none;position:fixed;border-radius:50%;border:1.5px solid var(--rclr,rgba(167,139,250,.7));transform:translate(-50%,-50%) scale(0);animation:rippleOut3 .75s ease-out forwards;z-index:9993}
+@keyframes rippleOut3{0%{transform:translate(-50%,-50%) scale(0);opacity:1}100%{transform:translate(-50%,-50%) scale(4.5);opacity:0}}
 </style>
 </head>
 <body>
@@ -237,8 +259,8 @@ label.lbl{font-size:13px;color:var(--muted);display:block;margin-bottom:5px;font
     </div>
   </div>
 </div>
-<!-- Cursor glow -->
-<div id="cursor-glow"></div>
+<!-- Cursor -->
+<div id="cursor-dot"></div>
 
 <script>
 /* ═══════════════════════════════════════════════════════
@@ -387,47 +409,42 @@ const DEFAULT_QS=[
   {id:10,type:'tnl',question:'1 Terabyte bằng bao nhiêu Gigabyte?',answer:'1024',answerAlt:'1,024',hint:'Đơn vị nhị phân: 2¹⁰ = 1024'},
 ];
 
-/* ── CANVAS BG ── */
+/* ── CANVAS BG + PARTICLE SYSTEM ── */
 (function initBG(){
   const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
   let W,H,particles=[],orbs=[];
   const resize=()=>{W=c.width=window.innerWidth;H=c.height=window.innerHeight;
-    // Re-scatter particles on resize so they fill the new size
     particles.forEach(p=>{if(p.x>W)p.x=Math.random()*W;if(p.y>H)p.y=Math.random()*H;});
   };
   resize();window.addEventListener('resize',resize);
-  // More particles, brighter, slightly faster
-  for(let i=0;i<80;i++)particles.push({
+  for(let i=0;i<90;i++)particles.push({
     x:Math.random()*window.innerWidth,
     y:Math.random()*window.innerHeight,
-    vx:(Math.random()-.5)*.45,
-    vy:(Math.random()-.5)*.45,
-    r:Math.random()*2+.7,
-    a:.4+Math.random()*.6
+    vx:(Math.random()-.5)*.42,
+    vy:(Math.random()-.5)*.42,
+    r:Math.random()*2+.6,
+    a:.35+Math.random()*.65
   });
-  // Larger, more vivid orbs — violet, cyan (subtle), emerald
-  const oc=[['124,58,237'],['6,182,212'],['16,185,129']];
-  for(let i=0;i<3;i++)orbs.push({
+  const oc=[[124,58,237],[6,182,212],[16,185,129],[236,72,153]];
+  for(let i=0;i<4;i++)orbs.push({
     x:Math.random()*window.innerWidth,
     y:Math.random()*window.innerHeight,
-    vx:(Math.random()-.5)*.5,
-    vy:(Math.random()-.5)*.5,
-    r:200+Math.random()*160,
+    vx:(Math.random()-.5)*.4,
+    vy:(Math.random()-.5)*.4,
+    r:180+Math.random()*140,
     col:oc[i]
   });
   function draw(){
     ctx.clearRect(0,0,W,H);
     const isDark=!document.body.classList.contains('light');
-    // Draw orbs
     orbs.forEach(o=>{
       o.x+=o.vx;o.y+=o.vy;
       if(o.x<-o.r)o.x=W+o.r;if(o.x>W+o.r)o.x=-o.r;
       if(o.y<-o.r)o.y=H+o.r;if(o.y>H+o.r)o.y=-o.r;
       const g=ctx.createRadialGradient(o.x,o.y,0,o.x,o.y,o.r);
-      g.addColorStop(0,`rgba(${o.col},${isDark?.13:.07})`);g.addColorStop(1,'transparent');
+      g.addColorStop(0,`rgba(${o.col.join(',')},${isDark?.11:.06})`);g.addColorStop(1,'transparent');
       ctx.beginPath();ctx.arc(o.x,o.y,o.r,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
     });
-    // Draw particles
     particles.forEach(p=>{
       p.x+=p.vx;p.y+=p.vy;
       if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;
@@ -435,14 +452,13 @@ const DEFAULT_QS=[
       ctx.fillStyle=isDark?`rgba(180,200,255,${p.a*.55})`:`rgba(80,100,140,${p.a*.3})`;
       ctx.fill();
     });
-    // Draw connection lines between nearby particles
     for(let i=0;i<particles.length;i++)for(let j=i+1;j<particles.length;j++){
       const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y,d=Math.sqrt(dx*dx+dy*dy);
       if(d<120){
         const alpha=isDark?.18*(1-d/120):.1*(1-d/120);
         ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);
         ctx.strokeStyle=isDark?`rgba(140,160,220,${alpha})`:`rgba(100,120,180,${alpha})`;
-        ctx.lineWidth=.8;ctx.stroke();
+        ctx.lineWidth=.7;ctx.stroke();
       }
     }
     requestAnimationFrame(draw);
@@ -474,14 +490,6 @@ function setScreen(s){
 
 /* helper */
 function esc(s){if(s==null)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-/* Rich text: supports **bold**, *italic*, and newlines */
-function richText(s){
-  if(s==null)return'';
-  return esc(s)
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/\*([^*]+?)\*/g,'<em>$1</em>')
-    .replace(/\\n|\n/g,'<br>');
-}
 /* Clickable image with lightbox */
 function zoomImg(src,style){
   return `<img src="${src}" class="img-zoomable" style="${style}" onclick="openLightbox(this.src)" alt="">`;
@@ -798,6 +806,8 @@ function renderCreate(){
       <button class="btn btn-violet" style="flex:1;min-width:120px" onclick="crSave()">💾 Lưu & Chơi</button>
     </div>
   </div>`;
+  // Inject RTE widgets for each question
+  CR.questions.forEach((q,i)=>injectRTE(i,q.question));
 }
 
 function renderCRQ(q,i){
@@ -871,7 +881,7 @@ function renderCRQ(q,i){
         ${CR.questions.length>1?`<button class="btn btn-ghost btn-icon btn-xs" onclick="crRemoveQ(${i})" style="color:var(--rose);border-color:rgba(239,68,68,.3);width:30px;height:30px;padding:4px">✕</button>`:''}
       </div>
     </div>
-    <input class="inp" style="margin-bottom:9px" placeholder="Nội dung câu hỏi..." value="${esc(q.question)}" oninput="crSetField(${i},'question',this.value)">
+    <div id="cr-q-rte-${i}" data-qi="${i}"></div>
     ${imgHtml}
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:9px;cursor:pointer">
       <div style="display:flex;align-items:center;gap:7px;padding:8px 13px;border-radius:var(--r3);border:1.5px dashed var(--border2);font-size:13px;color:var(--muted);background:rgba(255,255,255,.02);transition:var(--trans);cursor:pointer" onmouseover="this.style.borderColor='var(--cyan)'" onmouseout="this.style.borderColor='var(--border2)'">
@@ -887,6 +897,69 @@ function renderCRQ(q,i){
 }
 
 window.backToMenu=()=>{SFX.click();setScreen('menu');};
+
+/* Inject rich-text editor into a slot after DOM render */
+function injectRTE(i,val){
+  const slot=document.getElementById('cr-q-rte-'+i);
+  if(!slot)return;
+  // Build toolbar + contenteditable
+  const id='rte-q-'+i;
+  slot.innerHTML=`
+    <div class="rte-wrap">
+      <div class="rte-toolbar">
+        <button type="button" class="rte-btn rte-btn-b" title="In đậm (Ctrl+B)" onmousedown="rteExec(event,'${id}','bold')"><b>B</b></button>
+        <button type="button" class="rte-btn rte-btn-i" title="In nghiêng (Ctrl+I)" onmousedown="rteExec(event,'${id}','italic')"><i>I</i></button>
+        <button type="button" class="rte-btn" title="Xuống dòng" onmousedown="rteExec(event,'${id}','br')" style="font-size:14px">↵</button>
+        <span class="rte-hint">Ctrl+B · Ctrl+I · Enter xuống dòng</span>
+      </div>
+      <div class="rte-field" id="${id}" contenteditable="true" placeholder="Nội dung câu hỏi..."
+        data-qi="${i}"
+        oninput="rteOnInput('${id}',${i})"
+        onkeydown="rteOnKey(event,'${id}',${i})"
+        onpaste="rtePaste(event)"
+      >${rawToEditable(val||'')}</div>
+      <div class="rte-preview${hasFmt(val)?' has-fmt':''}" id="${id}-prev">
+        <div class="rte-preview-label">Xem trước</div>
+        <span class="rich-text">${richText(val||'')}</span>
+      </div>
+    </div>`;
+}
+window.rteExec=(ev,id,cmd)=>{
+  ev.preventDefault();
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.focus();
+  if(cmd==='bold')document.execCommand('bold',false,null);
+  else if(cmd==='italic')document.execCommand('italic',false,null);
+  else if(cmd==='br')document.execCommand('insertHTML',false,'<br><br>');
+  const qi=parseInt(el.getAttribute('data-qi'));
+  rteFlush(id,qi);
+};
+window.rteOnKey=(e,id,qi)=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();document.execCommand('bold',false,null);rteFlush(id,qi);}
+  if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();document.execCommand('italic',false,null);rteFlush(id,qi);}
+  // Enter inserts <br> (default contenteditable behavior already handles this)
+};
+window.rteOnInput=(id,qi)=>{rteFlush(id,qi);};
+window.rtePaste=(e)=>{
+  e.preventDefault();
+  const text=(e.clipboardData||window.clipboardData).getData('text/plain');
+  document.execCommand('insertText',false,text);
+};
+function rteFlush(id,qi){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const raw=editableToRaw(el.innerHTML);
+  CR.questions[qi].question=raw;
+  // update preview
+  const prev=document.getElementById(id+'-prev');
+  if(prev){
+    const span=prev.querySelector('.rich-text');
+    if(span)span.innerHTML=richText(raw);
+    prev.className='rte-preview'+(hasFmt(raw)?' has-fmt':'');
+  }
+}
+
 window.crAddQ=()=>{SFX.click();CR.questions.push({type:'mcq',question:'',options:['','','',''],answer:0,hint:'',image:'',optImages:['','','',''],subQuestions:[{text:'',image:''},{text:'',image:''},{text:'',image:''},{text:'',image:''}],subAnswers:[null,null,null,null]});renderCreate();};
 window.crRemoveQ=(i)=>{SFX.click();CR.questions.splice(i,1);renderCreate();};
 window.crSetType=(i,t)=>{
@@ -1603,53 +1676,148 @@ document.getElementById('lightbox').addEventListener('wheel',(e)=>{
 },{passive:false});
 
 /* ══════════════════════════════════════════════════
-   CURSOR EFFECTS
+   RICH TEXT EDITOR HELPERS
+══════════════════════════════════════════════════ */
+
+/* Convert stored raw text (with **bold** *italic* \n) → HTML for display */
+function richText(s){
+  if(s==null)return'';
+  return esc(s)
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*([^*\n]+?)\*/g,'<em>$1</em>')
+    .replace(/\\n|\n/g,'<br>');
+}
+
+/* Convert stored raw text → innerHTML for contenteditable */
+function rawToEditable(s){
+  if(!s)return'';
+  // Escape HTML but keep structure
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*([^*\n]+?)\*/g,'<em>$1</em>')
+    .replace(/\n/g,'<br>');
+}
+
+/* Convert contenteditable innerHTML → raw storage format */
+function editableToRaw(html){
+  // Normalize: <br> → \n, <strong> → **, <em> → *, strip other tags
+  return html
+    .replace(/<br\s*\/?>/gi,'\n')
+    .replace(/<strong>([\s\S]*?)<\/strong>/gi,'**$1**')
+    .replace(/<em>([\s\S]*?)<\/em>/gi,'*$1*')
+    .replace(/<[^>]+>/g,'')
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ');
+}
+
+/* Has any formatting tokens? */
+function hasFmt(s){return s&&(/\*\*|^\*[^*]/.test(s)||s.includes('\n'));}
+
+/* ══════════════════════════════════════════════════
+   CURSOR EFFECTS — v4 (attraction + glow + sparks)
 ══════════════════════════════════════════════════ */
 (function initCursor(){
-  const glow=document.getElementById('cursor-glow');
-  if(!glow)return;
-  const COLORS=['#7c3aed','#06b6d4','#10b981','#f59e0b','#ec4899','#a78bfa','#67e8f9'];
-  let mx=0,my=0,lastSpawn=0;
-  document.addEventListener('mousemove',(e)=>{
-    mx=e.clientX;my=e.clientY;
-    glow.style.left=mx+'px';
-    glow.style.top=my+'px';
-    const now=Date.now();
-    if(now-lastSpawn>38){
-      lastSpawn=now;
-      spawnSpark(mx,my);
-    }
-  });
-  document.addEventListener('mouseenter',()=>{glow.style.opacity='1';});
-  document.addEventListener('mouseleave',()=>{glow.style.opacity='0';});
-  // Grow on click
-  document.addEventListener('mousedown',()=>{
-    glow.style.width='38px';glow.style.height='38px';
-    for(let i=0;i<8;i++)spawnSpark(mx,my,true);
-  });
-  document.addEventListener('mouseup',()=>{glow.style.width='22px';glow.style.height='22px';});
+  const dot=document.getElementById('cursor-dot');
+  if(!dot)return;
 
-  function spawnSpark(x,y,burst){
+  const SPARK_COLS=['#a78bfa','#67e8f9','#6ee7b7','#fbbf24','#f472b6','#c084fc','#38bdf8','#34d399'];
+  const GLOW_COLS=[
+    'rgba(167,139,250,.48)','rgba(103,232,249,.42)',
+    'rgba(110,231,183,.38)','rgba(244,114,182,.42)','rgba(192,132,252,.44)'
+  ];
+
+  let mx=0,my=0,px=0,py=0;
+  let lastGlow=0, lastSpark=0;
+
+  function onMove(cx,cy){
+    mx=cx; my=cy;
+    dot.style.left=cx+'px'; dot.style.top=cy+'px'; dot.style.opacity='1';
+
+    const dx=cx-px, dy=cy-py;
+    const speed=Math.sqrt(dx*dx+dy*dy);
+    px=cx; py=cy;
+
+    const now=Date.now();
+
+    /* Glow blobs — soft ambient, no lines */
+    const gInt=speed>10?16:speed>4?26:40;
+    if(now-lastGlow>gInt){
+      lastGlow=now;
+      spawnGlow(cx,cy,speed);
+    }
+
+    /* Sparks — only on movement, scale with speed */
+    if(speed>5 && now-lastSpark>32){
+      lastSpark=now;
+      const cnt=speed>20?3:speed>10?2:1;
+      for(let i=0;i<cnt;i++) spawnSpark(cx,cy,false,speed);
+    }
+  }
+
+  document.addEventListener('mousemove',e=>onMove(e.clientX,e.clientY));
+  document.addEventListener('touchmove',e=>{
+    const t=e.touches[0]; onMove(t.clientX,t.clientY);
+  },{passive:true});
+  document.addEventListener('mouseleave',()=>{ dot.style.opacity='0'; });
+  document.addEventListener('mouseenter',()=>{ dot.style.opacity='1'; });
+
+  /* Click / touch */
+  function onPress(cx,cy){
+    dot.style.width='10px'; dot.style.height='10px';
+    spawnRipple(cx,cy);
+    for(let i=0;i<16;i++) spawnSpark(cx,cy,true);
+    /* burst glow */
+    for(let i=0;i<4;i++) setTimeout(()=>spawnGlow(cx,cy,40,true),i*50);
+  }
+  function onRelease(){ dot.style.width='7px'; dot.style.height='7px'; }
+
+  document.addEventListener('mousedown',e=>onPress(e.clientX,e.clientY));
+  document.addEventListener('mouseup',onRelease);
+  document.addEventListener('touchstart',e=>{const t=e.touches[0];onPress(t.clientX,t.clientY);},{passive:true});
+  document.addEventListener('touchend',onRelease);
+
+  /* ─── Particle factories ─── */
+
+  function spawnGlow(x,y,speed,burst){
     const el=document.createElement('div');
-    el.className='cursor-spark';
-    const size=(burst?6:3)+Math.random()*5;
-    const angle=Math.random()*Math.PI*2;
-    const dist=(burst?30:12)+Math.random()*(burst?40:18);
-    const dx=Math.cos(angle)*dist;
-    const dy=Math.sin(angle)*dist;
-    const dur=(burst?.55:.45)+Math.random()*.3;
-    const col=COLORS[Math.floor(Math.random()*COLORS.length)];
-    el.style.cssText=`
-      left:${x}px;top:${y}px;
-      width:${size}px;height:${size}px;
-      background:${col};
-      --dx:${dx}px;--dy:${dy}px;
-      --dur:${dur}s;
-      animation-duration:${dur}s;
-      box-shadow:0 0 ${size+2}px ${col};
-    `;
+    el.className='cur-glow';
+    const sz=burst?(20+Math.random()*22):(7+speed*.5+Math.random()*7);
+    const col=GLOW_COLS[Math.floor(Math.random()*GLOW_COLS.length)];
+    const dur=(burst?.6:.38)+Math.random()*.22;
+    /* tiny scatter so blobs don't overlap perfectly */
+    const ox=(Math.random()-.5)*5, oy=(Math.random()-.5)*5;
+    el.style.cssText=`left:${x+ox}px;top:${y+oy}px;width:${sz}px;height:${sz}px;background:${col};--gd:${dur}s;animation-duration:${dur}s`;
     document.body.appendChild(el);
-    setTimeout(()=>el.remove(),(dur+.1)*1000);
+    setTimeout(()=>el.remove(),(dur+.06)*1000);
+  }
+
+  function spawnSpark(x,y,burst,baseSpeed=0){
+    const el=document.createElement('div');
+    el.className='cur-spark';
+    const sz=(burst?3:1.5)+Math.random()*(burst?5.5:3.5);
+    const angle=Math.random()*Math.PI*2;
+    const dist=(burst?20:4)+Math.random()*(burst?34:14)+baseSpeed*.3;
+    const dx=Math.cos(angle)*dist, dy=Math.sin(angle)*dist;
+    const dur=(burst?.46:.28)+Math.random()*.28;
+    const col=SPARK_COLS[Math.floor(Math.random()*SPARK_COLS.length)];
+    const br=Math.random()>.4?'50%':'3px';
+    el.style.cssText=`left:${x}px;top:${y}px;width:${sz}px;height:${sz}px;background:${col};border-radius:${br};--dx:${dx}px;--dy:${dy}px;--dur:${dur}s;animation-duration:${dur}s;box-shadow:0 0 ${sz+2}px ${col}`;
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(),(dur+.07)*1000);
+  }
+
+  function spawnRipple(x,y){
+    const cols=['rgba(167,139,250,.8)','rgba(103,232,249,.7)','rgba(110,231,183,.6)'];
+    [0,110,220].forEach((delay,ri)=>{
+      setTimeout(()=>{
+        const el=document.createElement('div');
+        el.className='cur-ripple';
+        const sz=14+ri*8;
+        el.style.cssText=`left:${x}px;top:${y}px;width:${sz}px;height:${sz}px;--rclr:${cols[ri]}`;
+        document.body.appendChild(el);
+        setTimeout(()=>el.remove(),900);
+      },delay);
+    });
   }
 })();
 </script>
