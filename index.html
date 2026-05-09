@@ -306,7 +306,16 @@ const QS = {
         for (const meta of idx) {
           try {
             const raw = localStorage.getItem(meta.key);
-            if (raw) list.push({ name: meta.name, timePerQ: meta.timePerQ || 20, hints: meta.hints || 3, questions: JSON.parse(raw) });
+            if (raw) {
+              list.push({ name: meta.name, timePerQ: meta.timePerQ || 20, hints: meta.hints || 3, questions: JSON.parse(raw) });
+            } else if (meta._noStorage) {
+              /* Questions quá lớn không lưu được — vẫn giữ bộ đề với questions rỗng
+                 để người dùng biết nó tồn tại và có thể xóa/thêm lại */
+              list.push({ name: meta.name, timePerQ: meta.timePerQ || 20, hints: meta.hints || 3, questions: [] });
+            } else {
+              /* key không tìm thấy — vẫn tạo entry rỗng để không mất slot */
+              list.push({ name: meta.name, timePerQ: meta.timePerQ || 20, hints: meta.hints || 3, questions: [] });
+            }
           } catch (_) {}
         }
         _QS_MEM.list = list;
@@ -324,20 +333,49 @@ const QS = {
 
   _persist() {
     const list = _QS_MEM.list;
-    /* Remove old per-key entries */
+    /* Xóa các key cũ */
     try {
       const oldIdx = JSON.parse(localStorage.getItem('qs_index') || '[]');
       for (const m of oldIdx) { try { localStorage.removeItem(m.key); } catch (_) {} }
     } catch (_) {}
+    /* Xóa hết key qs_N cũ có thể còn sót */
+    for (let k = 0; k < 20; k++) { try { localStorage.removeItem('qs_' + k); } catch (_) {} }
+
     const idx = [];
     for (let i = 0; i < list.length; i++) {
       const s = list[i];
       const key = 'qs_' + i;
-      const meta = { name: s.name, timePerQ: s.timePerQ, hints: s.hints, key };
+      const meta = { name: s.name, timePerQ: s.timePerQ || 20, hints: s.hints || 3, key };
+      /* Thử lưu questions đầy đủ */
+      let saved = false;
       try {
         localStorage.setItem(key, JSON.stringify(s.questions));
-        idx.push(meta);
-      } catch (_) { /* questions too large — won't persist but MEM is fine */ }
+        saved = true;
+      } catch (_) {
+        /* Quota đầy — thử lưu phiên bản không có ảnh */
+        try {
+          const lite = s.questions.map(q => {
+            const c = Object.assign({}, q);
+            if (c.image && c.image.length > 200) c.image = '';
+            if (c.optImages) c.optImages = c.optImages.map(x => (x && x.length > 200) ? '' : x);
+            if (c.subQuestions) c.subQuestions = c.subQuestions.map(sq => {
+              const sc = Object.assign({}, sq);
+              if (sc.image && sc.image.length > 200) sc.image = '';
+              return sc;
+            });
+            return c;
+          });
+          localStorage.setItem(key, JSON.stringify(lite));
+          saved = true;
+        } catch (_2) {}
+      }
+      /* Dù có lưu được questions hay không, vẫn đẩy meta vào idx
+         để bộ đề không bị mất khỏi danh sách khi reload */
+      idx.push(meta);
+      if (!saved) {
+        /* Đánh dấu để khi load biết questions không có trong storage */
+        idx[idx.length - 1]._noStorage = true;
+      }
     }
     try { localStorage.setItem('qs_index', JSON.stringify(idx)); } catch (_) {}
     try { localStorage.removeItem('question_sets'); } catch (_) {}
@@ -362,6 +400,16 @@ const QS = {
     this._persist();
   },
 };
+
+/* ── localStorage quota check ── */
+function _lsQuotaOk(){
+  try{
+    const t='__qtest__';
+    localStorage.setItem(t,'1');
+    localStorage.removeItem(t);
+    return true;
+  }catch(_){return false;}
+}
 
 /* ── localStorage wrapper (non-question-set keys) ── */
 const _LS_MEM = {};
