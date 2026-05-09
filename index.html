@@ -212,6 +212,7 @@ label.lbl{font-size:13px;color:var(--muted);display:block;margin-bottom:5px;font
 /* ── RICH TEXT display (bold/italic/newline in questions) ── */
 .rich-text strong{font-weight:800;color:var(--text)}
 .rich-text em{font-style:italic;color:#c4b5fd}
+.rich-text u{text-decoration:underline;text-underline-offset:3px}
 .rich-text br{display:block;content:'';margin-top:4px}
 
 /* ── RICH TEXT EDITOR (create screen) ── */
@@ -222,6 +223,7 @@ label.lbl{font-size:13px;color:var(--muted);display:block;margin-bottom:5px;font
 .rte-btn.active{background:rgba(124,58,237,.25);border-color:var(--violet);color:#a78bfa}
 .rte-btn-b{font-weight:900}
 .rte-btn-i{font-style:italic;font-weight:600}
+.rte-btn-u{text-decoration:underline;font-weight:600}
 .rte-hint{font-size:11px;color:var(--muted);padding:2px 7px;border-left:2px solid var(--border2)}
 .rte-field{width:100%;min-height:44px;padding:10px 14px;border-radius:var(--r3);border:1.5px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:border-color .2s;line-height:1.7;cursor:text;white-space:pre-wrap;word-break:break-word}
 .light .rte-field{background:rgba(255,255,255,.85)}
@@ -229,6 +231,7 @@ label.lbl{font-size:13px;color:var(--muted);display:block;margin-bottom:5px;font
 .rte-field[placeholder]:empty::before{content:attr(placeholder);color:var(--muted);pointer-events:none}
 .rte-field strong{font-weight:800;color:var(--text)}
 .rte-field em{font-style:italic;color:#c4b5fd}
+.rte-field u{text-decoration:underline;text-underline-offset:3px}
 .rte-preview{margin-top:5px;padding:7px 11px;border-radius:6px;background:rgba(124,58,237,.06);border:1px solid rgba(124,58,237,.2);font-size:13px;color:var(--muted);display:none}
 .rte-preview.has-fmt{display:block}
 .rte-preview-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--violet);margin-bottom:3px}
@@ -909,8 +912,9 @@ function injectRTE(i,val){
       <div class="rte-toolbar">
         <button type="button" class="rte-btn rte-btn-b" title="In đậm (Ctrl+B)" onmousedown="rteExec(event,'${id}','bold')"><b>B</b></button>
         <button type="button" class="rte-btn rte-btn-i" title="In nghiêng (Ctrl+I)" onmousedown="rteExec(event,'${id}','italic')"><i>I</i></button>
+        <button type="button" class="rte-btn rte-btn-u" title="Gạch chân (Ctrl+U)" onmousedown="rteExec(event,'${id}','underline')"><u>U</u></button>
         <button type="button" class="rte-btn" title="Xuống dòng" onmousedown="rteExec(event,'${id}','br')" style="font-size:14px">↵</button>
-        <span class="rte-hint">Ctrl+B · Ctrl+I · Enter xuống dòng</span>
+        <span class="rte-hint">Ctrl+B · Ctrl+I · Ctrl+U · Enter xuống dòng</span>
       </div>
       <div class="rte-field" id="${id}" contenteditable="true" placeholder="Nội dung câu hỏi..."
         data-qi="${i}"
@@ -931,6 +935,7 @@ window.rteExec=(ev,id,cmd)=>{
   el.focus();
   if(cmd==='bold')document.execCommand('bold',false,null);
   else if(cmd==='italic')document.execCommand('italic',false,null);
+  else if(cmd==='underline')document.execCommand('underline',false,null);
   else if(cmd==='br')document.execCommand('insertHTML',false,'<br><br>');
   const qi=parseInt(el.getAttribute('data-qi'));
   rteFlush(id,qi);
@@ -938,6 +943,7 @@ window.rteExec=(ev,id,cmd)=>{
 window.rteOnKey=(e,id,qi)=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='b'){e.preventDefault();document.execCommand('bold',false,null);rteFlush(id,qi);}
   if((e.ctrlKey||e.metaKey)&&e.key==='i'){e.preventDefault();document.execCommand('italic',false,null);rteFlush(id,qi);}
+  if((e.ctrlKey||e.metaKey)&&e.key==='u'){e.preventDefault();document.execCommand('underline',false,null);rteFlush(id,qi);}
   // Enter inserts <br> (default contenteditable behavior already handles this)
 };
 window.rteOnInput=(id,qi)=>{rteFlush(id,qi);};
@@ -1685,6 +1691,7 @@ function richText(s){
   return esc(s)
     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
     .replace(/\*([^*\n]+?)\*/g,'<em>$1</em>')
+    .replace(/__(.+?)__/g,'<u>$1</u>')
     .replace(/\\n|\n/g,'<br>');
 }
 
@@ -1696,6 +1703,7 @@ function rawToEditable(s){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
     .replace(/\*([^*\n]+?)\*/g,'<em>$1</em>')
+    .replace(/__(.+?)__/g,'<u>$1</u>')
     .replace(/\n/g,'<br>');
 }
 
@@ -1706,6 +1714,7 @@ function editableToRaw(html){
     .replace(/<br\s*\/?>/gi,'\n')
     .replace(/<strong>([\s\S]*?)<\/strong>/gi,'**$1**')
     .replace(/<em>([\s\S]*?)<\/em>/gi,'*$1*')
+    .replace(/<u>([\s\S]*?)<\/u>/gi,'__$1__')
     .replace(/<[^>]+>/g,'')
     .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ');
 }
