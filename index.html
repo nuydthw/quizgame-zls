@@ -1709,14 +1709,23 @@ function rawToEditable(s){
 
 /* Convert contenteditable innerHTML → raw storage format */
 function editableToRaw(html){
-  // Normalize: <br> → \n, <strong> → **, <em> → *, strip other tags
-  return html
-    .replace(/<br\s*\/?>/gi,'\n')
-    .replace(/<strong>([\s\S]*?)<\/strong>/gi,'**$1**')
-    .replace(/<em>([\s\S]*?)<\/em>/gi,'*$1*')
-    .replace(/<u>([\s\S]*?)<\/u>/gi,'__$1__')
-    .replace(/<[^>]+>/g,'')
-    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ');
+  let s=html;
+  // Line breaks: <br>, </div>, </p>
+  s=s.replace(/<br\s*\/?>/gi,'\n').replace(/<\/div>/gi,'\n').replace(/<\/p>/gi,'\n');
+  // Bold: <strong>, <b>, span with font-weight bold/600+
+  s=s.replace(/<(?:strong|b)(?:\s[^>]*)?>([\s\S]*?)<\/(?:strong|b)>/gi,function(_,t){return'**'+t+'**';});
+  s=s.replace(/<span[^>]*style="[^"]*font-weight\s*:\s*(?:bold|[6-9]\d{2})[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,function(_,t){return'**'+t+'**';});
+  // Italic: <em>, <i>, span with font-style italic
+  s=s.replace(/<(?:em|i)(?:\s[^>]*)?>([\s\S]*?)<\/(?:em|i)>/gi,function(_,t){return'*'+t+'*';});
+  s=s.replace(/<span[^>]*style="[^"]*font-style\s*:\s*italic[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,function(_,t){return'*'+t+'*';});
+  // Underline: <u>, span with text-decoration underline
+  s=s.replace(/<u(?:\s[^>]*)?>([\s\S]*?)<\/u>/gi,function(_,t){return'__'+t+'__';});
+  s=s.replace(/<span[^>]*style="[^"]*text-decoration\s*:\s*underline[^"]*"[^>]*>([\s\S]*?)<\/span>/gi,function(_,t){return'__'+t+'__';});
+  // Strip remaining tags
+  s=s.replace(/<[^>]+>/g,'');
+  // Decode entities
+  s=s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ');
+  return s.trim();
 }
 
 /* Has any formatting tokens? */
