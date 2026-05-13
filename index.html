@@ -551,7 +551,7 @@ function zoomImg(src,style){
 ══════════════════════════════════════════════════ */
 function showConfigModal(qs,name){
   S.modal='config';
-  S.modalData={qs,name,count:Math.min(10,qs.length),timePerQ:20,hints:3};
+  S.modalData={qs,name,count:Math.min(10,qs.length),timePerQ:20,hints:3,hintLimit:false};
   render();
 }
 function renderModal(){
@@ -565,7 +565,7 @@ function renderModal(){
         <button class="btn btn-ghost btn-icon btn-xs" onclick="closeModal()">✕</button>
       </div>
       <p style="font-size:13px;color:var(--muted);margin-bottom:18px">Bộ: <strong style="color:var(--text)">${esc(d.name)}</strong> (${max} câu)</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
         <div>
           <label class="lbl">📄 Số câu</label>
           <input class="inp" type="number" id="md-count" min="1" max="${max}" value="${Math.min(d.count,max)}" oninput="S.modalData.count=Math.min(${max},Math.max(1,+this.value))">
@@ -574,10 +574,21 @@ function renderModal(){
           <label class="lbl">⏱ Giây/câu</label>
           <input class="inp" type="number" id="md-time" min="5" max="120" value="${d.timePerQ}" oninput="S.modalData.timePerQ=+this.value">
         </div>
-        <div>
-          <label class="lbl">💡 Gợi ý</label>
-          <input class="inp" type="number" id="md-hints" min="0" max="10" value="${d.hints}" oninput="S.modalData.hints=+this.value">
+      </div>
+      <!-- Hint toggle -->
+      <div style="background:rgba(255,255,255,.04);border:1px solid var(--border2);border-radius:10px;padding:13px 15px;margin-bottom:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <div style="font-size:13px;font-weight:600">💡 Giới hạn gợi ý</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">Bật để giới hạn số lần dùng gợi ý mỗi câu</div>
+          </div>
+          <button id="md-hint-toggle" onclick="mdToggleHint()" style="min-width:46px;height:26px;border-radius:13px;border:none;cursor:pointer;font-size:12px;font-weight:700;transition:all .2s;background:${d.hintLimit?'var(--violet)':'rgba(255,255,255,.12)'};color:${d.hintLimit?'#fff':'var(--muted)'}">${d.hintLimit?'BẬT':'TẮT'}</button>
         </div>
+        ${d.hintLimit?`
+        <div style="margin-top:12px;display:flex;align-items:center;gap:10px">
+          <label style="font-size:12px;color:var(--muted);white-space:nowrap">Số lần / câu:</label>
+          <input class="inp" type="number" id="md-hints" min="1" max="20" value="${d.hints||3}" oninput="S.modalData.hints=Math.max(1,+this.value)" style="width:80px;margin:0">
+        </div>`:''}
       </div>
       <div style="display:flex;gap:10px">
         <button class="btn btn-ghost btn-full" onclick="closeModal()">Hủy</button>
@@ -588,15 +599,21 @@ function renderModal(){
 }
 window.closeModalBg=(e)=>{if(e.target.id==='modal-bg')closeModal();};
 window.closeModal=()=>{S.modal=null;render();};
+window.mdToggleHint=()=>{
+  S.modalData.hintLimit=!S.modalData.hintLimit;
+  renderModal();
+};
 window.startFromModal=()=>{
   const d=S.modalData;
   const count=Math.min(d.qs.length,Math.max(1,+document.getElementById('md-count').value||d.count));
   const timePerQ=Math.max(5,+document.getElementById('md-time').value||d.timePerQ);
-  const hints=Math.max(0,+document.getElementById('md-hints').value||d.hints);
+  const hintLimit=d.hintLimit;
+  const hintsEl=document.getElementById('md-hints');
+  const hints=hintLimit?(Math.max(1,+(hintsEl?hintsEl.value:d.hints)||d.hints)):999;
   const shuffled=[...d.qs].sort(()=>Math.random()-.5).slice(0,count);
   S.modal=null;
   SFX.click();
-  startGame(shuffled,{timePerQ,hints,name:d.name});
+  startGame(shuffled,{timePerQ,hints,hintLimit,name:d.name});
 };
 
 /* ══════════════════════════════════════════════════
@@ -1105,20 +1122,12 @@ window.crSave=()=>{
   if(!valid.length){alert('Nhập ít nhất 1 câu hỏi!');return;}
   const ns={name:CR.name||'Bộ đề',questions:valid.map((q,i)=>({...q,id:i+1})),timePerQ:CR.timePerQ||20,hints:CR.hints||3};
   if(CR.editIndex!=null){
-    // Editing existing — overwrite
     QS.update(CR.editIndex, ns);
     SFX.correct();
-    // Auto export JSON
-    _doExportJSON(ns);
-    // Go to game
     startGame(ns.questions,{timePerQ:ns.timePerQ,hints:ns.hints,name:ns.name});
   } else {
-    // New set — push, export JSON, reset CR, go to game
     QS.upsert(ns);
     SFX.correct();
-    // Auto export JSON
-    _doExportJSON(ns);
-    // Reset so next time user creates fresh
     initCR();
     startGame(ns.questions,{timePerQ:ns.timePerQ,hints:ns.hints,name:ns.name});
   }
@@ -1140,7 +1149,7 @@ function startGame(questions,config){
   Object.assign(S,{
     questions,config,idx:0,score:0,streak:0,
     timeLeft:config.timePerQ,frozen:false,answered:false,
-    selected:null,eliminated:[],hintsLeft:config.hints,
+    selected:null,eliminated:[],hintsLeft:config.hintLimit?config.hints:999,
     startTime:Date.now(),elapsed:0,results:[],currentHint:'',
     bestStreak:LS.get('best_streak',0),practiceList:[],
     saInput:'',saImg:'',saCorrect:false,
@@ -1294,7 +1303,7 @@ function renderGame(){
         ?`<button class="btn btn-cyan btn-sm" onclick="gameFreeze()" ${S.answered?'disabled':''}>❄️ Đóng băng</button>`
         :`<button class="btn btn-emerald btn-sm" onclick="gameResume()">▶ Tiếp tục</button>`}
       <button class="btn btn-ghost btn-sm" onclick="gameSkip()" ${S.answered||S.frozen?'disabled':''}>⏭ Bỏ qua</button>
-      <button class="btn btn-amber btn-sm" onclick="gameHint()" ${S.hintsLeft<=0||S.answered||S.frozen?'disabled':''}>💡 Gợi ý (${S.hintsLeft})</button>
+      <button class="btn btn-amber btn-sm" onclick="gameHint()" ${S.hintsLeft<=0||S.answered||S.frozen?'disabled':''}>💡 Gợi ý ${S.config.hintLimit?'('+S.hintsLeft+')':'(∞)'}</button>
       <span style="margin-left:auto;font-size:12px;color:var(--muted)">🏆 ${S.bestStreak}</span>
     </div>
   </div>`;
@@ -1417,6 +1426,7 @@ function advance(){
   clearInterval(S.timerID);S.currentHint='';
   if(S.idx+1>=S.questions.length){S.elapsed=Math.floor((Date.now()-S.startTime)/1000);setScreen('result');return;}
   S.idx++;S.timeLeft=S.config.timePerQ;S.answered=false;S.selected=null;S.eliminated=[];S.frozen=false;
+  S.hintsLeft=S.config.hintLimit?S.config.hints:999;
   S.saInput='';S.saImg='';S.saCorrect=false;S.tfSubAnswers=[];
   renderGame();SFX.whoosh();
 }
@@ -1534,12 +1544,16 @@ function renderResult(){
 }
 window.playAgain=()=>{SFX.click();startGame(S.questions,S.config);};
 window.goMenuFromResult=()=>{SFX.click();setScreen('menu');};
-window.goPractice=()=>{SFX.click();setScreen('practice');};
+window.goPractice=()=>{
+  PR.hintsLeft=(S.config&&S.config.hintLimit)?S.config.hints:999;
+  PR.frozen=false;PR.eliminated=[];PR.currentHint='';PR.showBaseHint=false;
+  SFX.click();setScreen('practice');
+};
 
 /* ══════════════════════════════════════════════════
    PRACTICE SCREEN (Luyện tập câu sai)
 ══════════════════════════════════════════════════ */
-let PR={idx:0,score:0,answered:false,selected:null,saInput:'',saCorrect:false,results:[]};
+let PR={idx:0,score:0,answered:false,selected:null,saInput:'',saCorrect:false,results:[],tfSubAnswers:[],frozen:false,eliminated:[],hintsLeft:0,currentHint:''};
 function renderPractice(){
   if(!S.practiceList||!S.practiceList.length){setScreen('menu');return;}
   const q=S.practiceList[PR.idx],total=S.practiceList.length,done=PR.answered;
@@ -1562,12 +1576,13 @@ function renderPractice(){
     <!-- Card -->
     <div class="glass" style="padding:20px;margin-bottom:12px">
       <div style="display:flex;gap:7px;margin-bottom:12px">
-        <span class="tag tag-${q.type==='tnl'?'tnl':q.type==='mcq'?'mcq':'tf'}">${q.type==='tnl'?'Trả lời ngắn':q.type==='mcq'?'ABCD':'4 Lựa chọn'}</span>
+        <span class="tag tag-${q.type==='tnl'?'tnl':q.type==='mcq'?'mcq':'tf'}">${q.type==='tnl'?'Trả lời ngắn':q.type==='mcq'?'ABCD':'Đúng / Sai'}</span>
         <span class="tag" style="background:rgba(245,158,11,.14);color:#fbbf24;border:1px solid rgba(245,158,11,.3)">Câu sai / bỏ qua</span>
       </div>
       <p class="rich-text" style="font-size:16px;font-weight:600;line-height:1.55;margin-bottom:16px">${richText(q.question)}</p>
       ${q.image?zoomImg(q.image,'max-width:100%;max-height:160px;margin-bottom:13px;object-fit:contain;border:1px solid var(--border)'):''}
-      ${q.hint?`<div class="hint-box" style="margin-bottom:13px">💡 ${esc(q.hint)}</div>`:''}
+      ${PR.frozen?`<div style="background:rgba(6,182,212,.12);border:1px solid rgba(6,182,212,.4);border-radius:9px;padding:9px 14px;font-weight:700;font-size:14px;color:#67e8f9;margin-bottom:13px">❄️ Đang đóng băng — thời gian tạm dừng</div>`:''}
+      ${PR.currentHint?`<div class="hint-box" style="margin-bottom:13px">💡 ${esc(PR.currentHint)}</div>`:q.hint&&PR.showBaseHint?`<div class="hint-box" style="margin-bottom:13px">💡 ${esc(q.hint)}</div>`:''}
       ${q.type==='tnl'?`
         <div>
           ${done?`
@@ -1585,17 +1600,46 @@ function renderPractice(){
             </div>
           `}
         </div>
+      `:q.type==='tf'&&q.subQuestions&&q.subQuestions.length?`
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${q.subQuestions.map((sq,si)=>{
+            const ans=sq.answer;
+            const playerAns=PR.tfSubAnswers?PR.tfSubAnswers[si]:undefined;
+            return`<div style="border:1px solid ${done?(playerAns===ans?'var(--emerald)':'var(--rose)'):'var(--border)'};border-radius:10px;padding:12px 14px;background:${done?(playerAns===ans?'rgba(16,185,129,.07)':'rgba(239,68,68,.07)'):'rgba(255,255,255,.03)'};transition:all .2s">
+              <p class="rich-text" style="font-size:14px;font-weight:600;margin-bottom:8px;line-height:1.5">${richText(sq.text||sq.question||'')}</p>
+              ${sq.image?zoomImg(sq.image,'max-width:100%;max-height:100px;margin-bottom:8px;object-fit:contain'):''}
+              ${done||( PR.tfHintRevealed&&PR.tfHintRevealed.includes(si))?`
+                <div style="font-size:13px">
+                  ${done?`Đáp án: <strong style="color:${ans?'var(--emerald)':'var(--rose)'}">${ans?'✓ Đúng':'✗ Sai'}</strong>
+                  ${playerAns!==undefined?` · Bạn chọn: <strong style="color:${playerAns===ans?'var(--emerald)':'var(--rose)'}">${playerAns?'Đúng':'Sai'}</strong>`:''}`:
+                  `<span style="font-size:12px;color:#fbbf24">💡 Gợi ý: <strong style="color:${ans?'var(--emerald)':'var(--rose)'}">${ans?'✓ Đúng':'✗ Sai'}</strong></span>`}
+                </div>
+                ${!done?`<div style="margin-top:6px;display:flex;gap:8px">
+                  <button onclick="prTfSelectSub(${si},true)" style="padding:5px 18px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);border:1.5px solid ${PR.tfSubAnswers&&PR.tfSubAnswers[si]===true?'var(--emerald)':'var(--border)'};background:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===true?'rgba(16,185,129,.18)':'transparent'};color:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===true?'#6ee7b7':'var(--muted)'}">✓ Đúng</button>
+                  <button onclick="prTfSelectSub(${si},false)" style="padding:5px 18px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);border:1.5px solid ${PR.tfSubAnswers&&PR.tfSubAnswers[si]===false?'var(--rose)':'var(--border)'};background:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===false?'rgba(239,68,68,.18)':'transparent'};color:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===false?'#fca5a5':'var(--muted)'}">✗ Sai</button>
+                </div>`:''}
+              `:`
+                <div style="display:flex;gap:8px">
+                  <button onclick="prTfSelectSub(${si},true)" style="padding:5px 18px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);border:1.5px solid ${PR.tfSubAnswers&&PR.tfSubAnswers[si]===true?'var(--emerald)':'var(--border)'};background:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===true?'rgba(16,185,129,.18)':'transparent'};color:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===true?'#6ee7b7':'var(--muted)'}">✓ Đúng</button>
+                  <button onclick="prTfSelectSub(${si},false)" style="padding:5px 18px;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font);border:1.5px solid ${PR.tfSubAnswers&&PR.tfSubAnswers[si]===false?'var(--rose)':'var(--border)'};background:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===false?'rgba(239,68,68,.18)':'transparent'};color:${PR.tfSubAnswers&&PR.tfSubAnswers[si]===false?'#fca5a5':'var(--muted)'}">✗ Sai</button>
+                </div>
+              `}
+            </div>`;
+          }).join('')}
+          ${!done?`<button class="btn btn-violet btn-full" onclick="prTfSubmit()" style="margin-top:4px">✔ Nộp đáp án</button>`:''}
+        </div>
       `:`
         <div style="display:flex;flex-direction:column;gap:8px">
           ${(q.options||[]).map((opt,oi)=>{
             let cls='opt';
+            if(PR.eliminated&&PR.eliminated.includes(oi))cls+=' opt-elim';
             if(done){
               cls+=' opt-disabled';
               if(oi===q.answer)cls+=' opt-reveal';
               if(oi===PR.selected&&PR.selected!==q.answer)cls+=' opt-wrong';
               if(oi===PR.selected&&PR.selected===q.answer)cls+=' opt-correct';
             }
-            return`<button class="${cls}" onclick="prSelect(${oi})">
+            return`<button class="${cls}" onclick="prSelect(${oi})" ${PR.eliminated&&PR.eliminated.includes(oi)?'disabled':''}>
               <div class="opt-key">${String.fromCharCode(65+oi)}</div>
               <span class="rich-text" style="flex:1">${richText(opt)}${q.optImages&&q.optImages[oi]?zoomImg(q.optImages[oi],'display:block;max-width:100%;max-height:80px;margin-top:5px;object-fit:contain'):''}</span>
               ${done&&oi===q.answer?'<span style="font-size:17px">✓</span>':''}
@@ -1607,11 +1651,21 @@ function renderPractice(){
     </div>
 
     <!-- Score bar -->
-    <div class="glass" style="padding:13px 16px;display:flex;align-items:center;justify-content:space-between">
+    <div class="glass" style="padding:13px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <span style="font-size:14px;font-weight:600;color:var(--emerald)">✓ ${PR.score} đúng</span>
       <span style="font-size:13px;color:var(--muted)">${total - PR.idx - 1} câu còn lại</span>
     </div>
+
+    <!-- Action bar (giống game) -->
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      ${!PR.frozen
+        ?`<button class="btn btn-cyan btn-sm" onclick="prFreeze()" ${PR.answered?'disabled':''}>❄️ Đóng băng</button>`
+        :`<button class="btn btn-emerald btn-sm" onclick="prResume()">▶ Tiếp tục</button>`}
+      <button class="btn btn-ghost btn-sm" onclick="prSkip()" ${PR.answered||PR.frozen?'disabled':''}>⏭ Bỏ qua</button>
+      <button class="btn btn-amber btn-sm" onclick="prHint()" ${PR.answered||PR.frozen?'disabled':''}>💡 Gợi ý ${PR.hintsLeft<999?'('+PR.hintsLeft+')':'(∞)'}</button>
+    </div>
   </div>`;
+  if(!PR.answered&&!PR.frozen)prStartTimer();
 }
 
 window.prSubmitSA=()=>{
@@ -1629,7 +1683,9 @@ window.prSubmitSA=()=>{
   renderPractice();
   setTimeout(()=>{
     if(PR.idx+1>=S.practiceList.length){showPracticeResult();return;}
-    PR.idx++;PR.answered=false;PR.selected=null;PR.saInput='';PR.saCorrect=false;renderPractice();SFX.whoosh();
+    PR.idx++;PR.answered=false;PR.selected=null;PR.saInput='';PR.saCorrect=false;PR.frozen=false;PR.eliminated=[];PR.currentHint='';PR.showBaseHint=false;PR.tfHintRevealed=[];
+    if(S.config&&S.config.hintLimit)PR.hintsLeft=S.config.hints;
+    clearInterval(PR.timerID);renderPractice();SFX.whoosh();
   },ok?1400:2200);
 };
 window.prSelect=(oi)=>{
@@ -1641,12 +1697,104 @@ window.prSelect=(oi)=>{
   renderPractice();
   setTimeout(()=>{
     if(PR.idx+1>=S.practiceList.length){showPracticeResult();return;}
-    PR.idx++;PR.answered=false;PR.selected=null;PR.saInput='';PR.saCorrect=false;renderPractice();SFX.whoosh();
+    PR.idx++;PR.answered=false;PR.selected=null;PR.saInput='';PR.saCorrect=false;PR.frozen=false;PR.eliminated=[];PR.currentHint='';PR.showBaseHint=false;PR.tfHintRevealed=[];
+    if(S.config&&S.config.hintLimit)PR.hintsLeft=S.config.hints;
+    clearInterval(PR.timerID);renderPractice();SFX.whoosh();
   },ok?1200:1800);
 };
 window.backFromPractice=()=>{
-  PR={idx:0,score:0,answered:false,selected:null,saInput:'',saCorrect:false,results:[]};
+  clearInterval(PR.timerID);
+  PR={idx:0,score:0,answered:false,selected:null,saInput:'',saCorrect:false,results:[],tfSubAnswers:[],frozen:false,eliminated:[],hintsLeft:0,currentHint:'',showBaseHint:false,tfHintRevealed:[]};
   SFX.click();setScreen('result');
+};
+/* ── Practice timer ── */
+let _prTimerID=null;
+window.prTfSelectSub=(si,val)=>{
+  if(PR.answered)return;
+  if(!PR.tfSubAnswers)PR.tfSubAnswers=[];
+  PR.tfSubAnswers[si]=val;
+  renderPractice();
+};
+window.prTfSubmit=()=>{
+  if(PR.answered)return;
+  const q=S.practiceList[PR.idx];
+  if(!q.subQuestions||!q.subQuestions.length)return;
+  const playerAnss=PR.tfSubAnswers||[];
+  const allAnswered=q.subQuestions.every((_,si)=>playerAnss[si]!==undefined);
+  if(!allAnswered){
+    const btn=document.querySelector('.btn-violet');
+    if(btn){btn.style.background='rgba(239,68,68,.3)';setTimeout(()=>{btn.style.background='';},600);}
+    return;
+  }
+  PR.answered=true;
+  let correctCount=0;
+  q.subQuestions.forEach((sq,si)=>{if(playerAnss[si]===sq.answer)correctCount++;});
+  const allOk=correctCount===q.subQuestions.length;
+  if(allOk){SFX.correct();PR.score++;}else{SFX.wrong();}
+  PR.results.push({q:q.question,correct:allOk,answer:'Đúng/Sai'});
+  renderPractice();
+  setTimeout(()=>{
+    if(PR.idx+1>=S.practiceList.length){showPracticeResult();return;}
+    PR.idx++;PR.answered=false;PR.selected=null;PR.saInput='';PR.saCorrect=false;
+    PR.frozen=false;PR.eliminated=[];PR.currentHint='';PR.showBaseHint=false;PR.tfSubAnswers=[];PR.tfHintRevealed=[];
+    if(S.config&&S.config.hintLimit)PR.hintsLeft=S.config.hints;
+    clearInterval(_prTimerID);renderPractice();SFX.whoosh();
+  },allOk?1400:2200);
+};
+function prStartTimer(){
+  clearInterval(_prTimerID);
+  // Practice mode has no time limit — just keep frozen state correct
+}
+window.prFreeze=()=>{
+  if(PR.answered)return;
+  SFX.click();clearInterval(_prTimerID);PR.frozen=true;renderPractice();
+};
+window.prResume=()=>{
+  SFX.click();PR.frozen=false;renderPractice();prStartTimer();
+};
+window.prSkip=()=>{
+  if(PR.answered||PR.frozen)return;
+  SFX.click();clearInterval(_prTimerID);
+  const q=S.practiceList[PR.idx];
+  PR.results.push({q:q.question,correct:false,skipped:true,answer:''});
+  PR.answered=true;
+  PR.idx++;PR.answered=false;PR.selected=null;PR.saInput='';PR.saCorrect=false;
+  PR.frozen=false;PR.eliminated=[];PR.currentHint='';PR.showBaseHint=false;PR.tfHintRevealed=[];
+  if(PR.idx>=S.practiceList.length){showPracticeResult();return;}
+  renderPractice();SFX.whoosh();
+};
+window.prHint=()=>{
+  if(PR.answered||PR.frozen)return;
+  if(PR.hintsLeft<=0)return;
+  const q=S.practiceList[PR.idx];
+  // 1. Show base hint text if exists and not shown yet (không tốn lượt)
+  if(q.hint&&!PR.showBaseHint){
+    PR.showBaseHint=true;
+    SFX.click();renderPractice();return;
+  }
+  // 2. TNL: reveal first char (tốn 1 lượt)
+  if(q.type==='tnl'){
+    const ans=String(q.answer);
+    const hint='Chữ cái đầu: "'+ans[0].toUpperCase()+'" · Độ dài: '+ans.length+' ký tự';
+    if(PR.currentHint===hint)return; // đã hiện rồi, không tốn lượt
+    PR.currentHint=hint;
+    PR.hintsLeft--;SFX.click();renderPractice();return;
+  }
+  // 3. TF: hiện đáp án của 1 câu con chưa được tiết lộ (tốn 1 lượt)
+  if(q.type==='tf'&&q.subQuestions&&q.subQuestions.length){
+    if(!PR.tfHintRevealed)PR.tfHintRevealed=[];
+    const unrevealed=q.subQuestions.map((_,i)=>i).filter(i=>!PR.tfHintRevealed.includes(i));
+    if(!unrevealed.length)return; // hết câu để gợi ý
+    PR.tfHintRevealed.push(unrevealed[0]);
+    PR.hintsLeft--;SFX.click();renderPractice();return;
+  }
+  // 4. MCQ: loại bớt đáp án sai (tốn 1 lượt)
+  if(q.options){
+    const wrongs=q.options.map((_,i)=>i).filter(i=>i!==q.answer&&!PR.eliminated.includes(i));
+    if(!wrongs.length)return; // hết đáp án sai để loại
+    const toEl=wrongs.slice(0,Math.min(2,Math.max(1,wrongs.length-1)));
+    PR.eliminated.push(...toEl);PR.hintsLeft--;SFX.click();renderPractice();
+  }
 };
 function showPracticeResult(){
   const total=S.practiceList.length,pct=Math.round((PR.score/total)*100);
